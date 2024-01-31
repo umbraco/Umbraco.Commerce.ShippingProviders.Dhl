@@ -12,6 +12,5 @@
   <ItemGroup>
     <PackageVersion Include="Microsoft.Extensions.Http" Version="[8.0.0, 9)" />
     <PackageVersion Include="Umbraco.Commerce.Core" Version="[13.0.0, 14)" />
-    <PackageVersion Include="EasyPost-Official" Version="[6.1.0, 7)" />
   </ItemGroup>
 </Project>

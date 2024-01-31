@@ -6,24 +6,63 @@ using System.Threading;
 using System.Threading.Tasks;
 using Umbraco.Commerce.Common.Logging;
 using Umbraco.Commerce.Core.Api;
+using Umbraco.Commerce.Core.Generators;
 using Umbraco.Commerce.Core.Models;
 using Umbraco.Commerce.Core.ShippingProviders;
+using Umbraco.Commerce.ShippingProviders.Dhl.Api;
+using Umbraco.Commerce.ShippingProviders.Dhl.Api.Models;
 
-namespace Umbraco.Commerce.ShippingProviders.Shipmondo
+namespace Umbraco.Commerce.ShippingProviders.Dhl
 {
     [ShippingProvider("dhlexpress", "DHL Express", "DHL Express shipping provider")]
     public class DhlExpressShippingProvider : ShippingProviderBase<DhlExpressSettings>
     {
+        public static Dictionary<char, string> AvailableServices => new Dictionary<char, string>
+        {
+            { '1', "EXPRESS DOMESTIC 12:00" },
+            { '4', "JETLINE" },
+            { '5', "SPRINTLINE" },
+            { '7', "EXPRESS EASY" },
+            { '8', "EXPRESS EASY" },
+            { 'B', "EXPRESS BREAKBULK" },
+            { 'C', "MEDICAL EXPRESS" },
+            { 'D', "EXPRESS WORLDWIDE" },
+            { 'E', "EXPRESS 9:00" },
+            { 'F', "FREIGHT WORLDWIDE" },
+            { 'G', "DOMESTIC ECONOMY SELECT" },
+            { 'H', "ECONOMY SELECT" },
+            { 'I', "EXPRESS DOMESTIC 9:00" },
+            { 'J', "JUMBO BOX" },
+            { 'K', "EXPRESS 9:00" },
+            { 'L', "EXPRESS 10:30" },
+            { 'M', "EXPRESS 10:30" },
+            { 'N', "EXPRESS DOMESTIC" },
+            { 'O', "EXPRESS DOMESTIC 10:30" },
+            { 'P', "EXPRESS WORLDWIDE" },
+            { 'Q', "MEDICAL EXPRESS" },
+            { 'R', "GLOBALMAIL BUSINESS" },
+            { 'S', "SAME DAY" },
+            { 'T', "EXPRESS 12:00" },
+            { 'U', "EXPRESS WORLDWIDE" },
+            { 'V', "EUROPACK" },
+            { 'W', "ECONOMY SELECT" },
+            { 'X', "EXPRESS ENVELOPE" },
+            { 'Y', "EXPRESS 12:00" }
+        };
+
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly IOrderHashGenerator _orderHashGenerator;
         private readonly ILogger<DhlExpressShippingProvider> _logger;
 
         public DhlExpressShippingProvider(
             UmbracoCommerceContext ctx,
             IHttpClientFactory httpClientFactory,
+            IOrderHashGenerator orderHashGenerator,
             ILogger<DhlExpressShippingProvider> logger)
             : base(ctx)
         {
             _httpClientFactory = httpClientFactory;
+            _orderHashGenerator = orderHashGenerator;
             _logger = logger;
         }
 
@@ -31,59 +70,99 @@ namespace Umbraco.Commerce.ShippingProviders.Shipmondo
 
         public override async Task<ShippingRatesResult> GetShippingRatesAsync(ShippingProviderContext<DhlExpressSettings> context, CancellationToken cancellationToken = default)
         {
-            var client = EasypostClient.Create(_httpClientFactory, context.Settings);
             var package = context.Packages.FirstOrDefault();
 
-            var request = new ShipmondoQuoteListRequest
+            if (package == null || !package.HasMeasurements)
             {
-                Receiver = new ShipmondoAddress
+                _logger.Debug("Unable to calculate realtime DHL rates as the package provided is invalid");
+                return ShippingRatesResult.Empty;
+            }
+
+            var client = DhlExpressClient.Create(_httpClientFactory, context.Settings);
+
+            var request = new DhlExpressRatesRequest
+            {
+                CustomerDetails = new DhlExpressCustomerDetails
                 {
-                    Address1 = package.ReceiverAddress.AddressLine1,
-                    Address2 = package.ReceiverAddress.AddressLine2,
-                    City = package.ReceiverAddress.City,
-                    ZipCode = package.ReceiverAddress.ZipCode,
-                    CountryCode = package.ReceiverAddress.CountryIsoCode
-                },
-                Sender = new ShipmondoAddress
-                {
-                    Address1 = package.SenderAddress.AddressLine1,
-                    Address2 = package.SenderAddress.AddressLine2,
-                    City = package.SenderAddress.City,
-                    ZipCode = package.SenderAddress.ZipCode,
-                    CountryCode = package.SenderAddress.CountryIsoCode
+                    ReceiverDetails = new DhlExpressAddress
+                    {
+                        CityName = package.ReceiverAddress.City,
+                        PostalCode = package.ReceiverAddress.ZipCode,
+                        CountryCode = package.ReceiverAddress.CountryIsoCode
+                    },
+                    ShipperDetails = new DhlExpressAddress
+                    {
+                        CityName = package.SenderAddress.City,
+                        PostalCode = package.SenderAddress.ZipCode,
+                        CountryCode = package.SenderAddress.CountryIsoCode
+                    }
                 }
             };
 
-            var l = context.MeasurementSystem == MeasurementSystem.Metric ? package.Length : InToCm(package.Length);
-            var w = context.MeasurementSystem == MeasurementSystem.Metric ? package.Width : InToCm(package.Width);
-            var h = context.MeasurementSystem == MeasurementSystem.Metric ? package.Height : InToCm(package.Height);
-            var wg = context.MeasurementSystem == MeasurementSystem.Metric ? package.Weight : LbToKg(package.Weight);
-
-            request.Parcels.Add(new ShipmondoParcel
+            request.Accounts.Add(new DhlExpressAccount
             {
-                Description = context.Order.OrderNumber,
-                Weight = (int)Math.Ceiling(wg * 1000), // Kg to Grams
-                Length = (int)Math.Ceiling(l),
-                Width = (int)Math.Ceiling(w),
-                Height = (int)Math.Ceiling(h)
+                Number = context.Settings.AccountNumber
             });
 
-            var quotes = await client.GetQuoteList(request).ConfigureAwait(false);
+            request.UnitOfMeasurement = context.MeasurementSystem.ToString().ToLowerInvariant();
+            request.Packages.Add(new DhlExpressPackage
+            {
+                Weight = package.Weight,
+                Dimensions = new DhlExpressDimensions
+                {
+                    Length = package.Length,
+                    Width = package.Width,
+                    Height = package.Height
+                }
+            });
+
             var orderCurrency = Context.Services.CurrencyService.GetCurrency(context.Order.CurrencyId);
+            request.MonetaryAmount.Add(new DhlExpressMonetaryAmount
+            {
+                Value = context.Order.SubtotalPrice.Value.WithTax,
+                Currency = orderCurrency.Code
+            });
+
+            request.PlannedShippingDateAndTime = DateTime.UtcNow.Date.AddDays(context.Settings.ShippingTimeframe);
+            request.NextBusinessDay = context.Settings.NextBusinessDayFallback;
+
+            if (!string.IsNullOrWhiteSpace(context.Settings.ProductTypeCode))
+            {
+                request.ProductTypeCode = context.Settings.ProductTypeCode;
+            }
+
+            if (!string.IsNullOrWhiteSpace(context.Settings.CustomsDeclarablePropertyAlias))
+            {
+                var propKey = context.Settings.CustomsDeclarablePropertyAlias;
+                var customsDeclarable = context.Order.OrderLines.Any(x =>
+                    x.Properties.ContainsKey(propKey)
+                    && (x.Properties[propKey].Value.Equals("true", StringComparison.InvariantCultureIgnoreCase) || x.Properties[propKey].Value == "1"));
+                request.IsCustomsDeclarable = customsDeclarable;
+            }
+
+            var resp = await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken).ConfigureAwait(false);
+
+            if (resp.Status != "200")
+            {
+                _logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
+                return ShippingRatesResult.Empty;
+            }
 
             return new ShippingRatesResult
             {
-                Rates = quotes
-                    //.Where(x => x.CurrencyCode.Equals(orderCurrency.Code, StringComparison.OrdinalIgnoreCase))
-                    .Select(x => new ShippingRate(
-                            new Price(x.PriceBeforeVat, x.Price - x.PriceBeforeVat, context.Order.CurrencyId),
-                            new ShippingOption(CreateCompositeId(x.CarrierCode, x.ProductCode), x.Description),
-                            package.Id
-                        )).ToList()
+                Rates = resp.Products.Select(p =>
+                {
+                    var productPriceBreakdown = p.TotalPriceBreakdown.FirstOrDefault(x => x.CurrencyType == "BILLC");
+                    var productPriceTax = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "STTXA")?.Price ?? 0;
+                    var productPriceNet = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "SPRQT")?.Price ?? 0;
+                    var productPrice = new Price(productPriceNet, productPriceTax, context.Order.CurrencyId);
+                    var productName = AvailableServices.TryGetValue(p.ProductCode[0], out string value) ? value : p.ProductName;
+
+                    var option = new ShippingOption(p.ProductCode, productName);
+
+                    return new ShippingRate(productPrice, option, package.Id);
+                }).ToList()
             };
         }
-
-        private static string CreateCompositeId(string carrierCode, string productCode)
-            => $"{carrierCode}__{productCode}".Trim('_');
     }
 }
