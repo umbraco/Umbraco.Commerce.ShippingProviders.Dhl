@@ -19,7 +19,7 @@ parameters:
 
 variables:
   nodeVersion: 18.x
-  solution: Umbraco.Commerce.ShippingProviders.Easypost.sln
+  solution: Umbraco.Commerce.ShippingProviders.Dhl.sln
   buildConfiguration: Release
   DOTNET_NOLOGO: true
   DOTNET_GENERATE_ASPNET_CERTIFICATE: false
