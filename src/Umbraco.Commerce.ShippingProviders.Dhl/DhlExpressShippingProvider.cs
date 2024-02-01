@@ -144,9 +144,10 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
             request.PlannedShippingDateAndTime = DateTime.UtcNow.Date.AddDays(context.Settings.ShippingTimeframe);
             request.NextBusinessDay = context.Settings.NextBusinessDayFallback;
 
-            if (!string.IsNullOrWhiteSpace(context.Settings.ProductTypeCode))
+            if (!string.IsNullOrWhiteSpace(context.Settings.ProductCodes))
             {
-                request.ProductTypeCode = context.Settings.ProductTypeCode;
+                request.ProductsAndServices.AddRange(context.Settings.ProductCodes.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(x => new DhlExpressProductAndServices { ProductCode = x }));
             }
 
             var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken).ConfigureAwait(false);

@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Text.Json.Serialization;
-using System.Threading.Tasks;
 
 namespace Umbraco.Commerce.ShippingProviders.Dhl.Api.Models
 {
@@ -33,6 +30,9 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl.Api.Models
         [JsonPropertyName("productTypeCode")]
         public string ProductTypeCode { get; set; }
 
+        [JsonPropertyName("productsAndServices")]
+        public List<DhlExpressProductAndServices> ProductsAndServices { get; set; }
+
         [JsonPropertyName("isCustomsDeclarable")]
         public bool IsCustomsDeclarable { get; set; }
 
@@ -44,6 +44,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl.Api.Models
             MonetaryAmount = new List<DhlExpressMonetaryAmount>();
             Accounts = new List<DhlExpressAccount>();
             Packages = new List<DhlExpressPackage>();
+            ProductsAndServices = new List<DhlExpressProductAndServices>();
         }
     }
 
@@ -118,5 +119,11 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl.Api.Models
         {
             TypeCode = "declaredValue";
         }
+    }
+
+    public class DhlExpressProductAndServices
+    {
+        [JsonPropertyName("productCode")]
+        public string ProductCode { get; set; }
     }
 }
