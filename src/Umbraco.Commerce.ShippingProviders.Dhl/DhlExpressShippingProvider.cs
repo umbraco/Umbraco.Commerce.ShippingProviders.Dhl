@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Umbraco.Commerce.Common.Logging;
 using Umbraco.Commerce.Core.Api;
-using Umbraco.Commerce.Core.Generators;
 using Umbraco.Commerce.Core.Models;
 using Umbraco.Commerce.Core.ShippingProviders;
 using Umbraco.Commerce.Extensions;
@@ -58,18 +57,15 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
         };
 
         private readonly IHttpClientFactory _httpClientFactory;
-        private readonly IOrderHashGenerator _orderHashGenerator;
         private readonly ILogger<DhlExpressShippingProvider> _logger;
 
         public DhlExpressShippingProvider(
             UmbracoCommerceContext ctx,
             IHttpClientFactory httpClientFactory,
-            IOrderHashGenerator orderHashGenerator,
             ILogger<DhlExpressShippingProvider> logger)
             : base(ctx)
         {
             _httpClientFactory = httpClientFactory;
-            _orderHashGenerator = orderHashGenerator;
             _logger = logger;
         }
 
