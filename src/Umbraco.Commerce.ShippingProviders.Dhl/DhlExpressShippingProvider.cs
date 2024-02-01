@@ -9,6 +9,7 @@ using Umbraco.Commerce.Core.Api;
 using Umbraco.Commerce.Core.Generators;
 using Umbraco.Commerce.Core.Models;
 using Umbraco.Commerce.Core.ShippingProviders;
+using Umbraco.Commerce.Extensions;
 using Umbraco.Commerce.ShippingProviders.Dhl.Api;
 using Umbraco.Commerce.ShippingProviders.Dhl.Api.Models;
 
@@ -17,7 +18,13 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
     [ShippingProvider("dhlexpress", "DHL Express", "DHL Express shipping provider")]
     public class DhlExpressShippingProvider : ShippingProviderBase<DhlExpressSettings>
     {
-        public static Dictionary<char, string> AvailableServices => new Dictionary<char, string>
+        private static string[] EuCountryCodes => new[]
+        {
+            "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "EL", "HU",
+            "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"
+        };
+
+        private static Dictionary<char, string> AvailableServices => new Dictionary<char, string>
         {
             { '1', "EXPRESS DOMESTIC 12:00" },
             { '4', "JETLINE" },
@@ -80,6 +87,20 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             var client = DhlExpressClient.Create(_httpClientFactory, context.Settings);
 
+            // Assume cross customs border by default
+            var isCustomsDeclarable = true;
+
+            if (package.SenderAddress.CountryIsoCode == package.ReceiverAddress.CountryIsoCode)
+            {
+                // Domestic
+                isCustomsDeclarable = false;
+            }
+            else if (EuCountryCodes.InvariantContains(package.SenderAddress.CountryIsoCode) && EuCountryCodes.InvariantContains(package.ReceiverAddress.CountryIsoCode))
+            {
+                // Inside the EU
+                isCustomsDeclarable = false;
+            }
+
             var request = new DhlExpressRatesRequest
             {
                 CustomerDetails = new DhlExpressCustomerDetails
@@ -96,7 +117,8 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                         PostalCode = package.SenderAddress.ZipCode,
                         CountryCode = package.SenderAddress.CountryIsoCode
                     }
-                }
+                },
+                IsCustomsDeclarable = isCustomsDeclarable
             };
 
             request.Accounts.Add(new DhlExpressAccount
@@ -131,16 +153,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                 request.ProductTypeCode = context.Settings.ProductTypeCode;
             }
 
-            if (!string.IsNullOrWhiteSpace(context.Settings.CustomsDeclarablePropertyAlias))
-            {
-                var propKey = context.Settings.CustomsDeclarablePropertyAlias;
-                var customsDeclarable = context.Order.OrderLines.Any(x =>
-                    x.Properties.ContainsKey(propKey)
-                    && (x.Properties[propKey].Value.Equals("true", StringComparison.InvariantCultureIgnoreCase) || x.Properties[propKey].Value == "1"));
-                request.IsCustomsDeclarable = customsDeclarable;
-            }
-
-            var resp = await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken).ConfigureAwait(false);
+            var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken).ConfigureAwait(false);
 
             if (resp.Status != "200")
             {

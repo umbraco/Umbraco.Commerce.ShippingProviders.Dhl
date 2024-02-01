@@ -50,11 +50,5 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
             SortOrder = 10100,
             IsAdvanced = true)]
         public string ProductTypeCode { get; set; }
-
-        [ShippingProviderSetting(Name = "Customs Declarable Property Alias",
-            Description = "Define a property on the order line that dertmines if the shippment contains customs declarable content.",
-            SortOrder = 10200,
-            IsAdvanced = true)]
-        public string CustomsDeclarablePropertyAlias { get; set; }
     }
 }

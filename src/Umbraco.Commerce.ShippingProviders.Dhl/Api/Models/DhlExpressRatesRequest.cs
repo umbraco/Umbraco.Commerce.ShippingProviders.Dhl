@@ -39,6 +39,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl.Api.Models
         public DhlExpressRatesRequest()
         {
             ProductTypeCode = "all";
+            IsCustomsDeclarable = true;
 
             MonetaryAmount = new List<DhlExpressMonetaryAmount>();
             Accounts = new List<DhlExpressAccount>();
