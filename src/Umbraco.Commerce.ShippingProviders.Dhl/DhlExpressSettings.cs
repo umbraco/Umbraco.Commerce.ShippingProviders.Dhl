@@ -45,16 +45,10 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
         public bool TestMode { get; set; }
 
 
-        [ShippingProviderSetting(Name = "Product Type Code",
-            Description = "Override the default product type code of 'all'.",
+        [ShippingProviderSetting(Name = "Product Codes",
+            Description = "Comma-seperated list of product codes to limit the lookup to.",
             SortOrder = 10100,
             IsAdvanced = true)]
-        public string ProductTypeCode { get; set; }
-
-        [ShippingProviderSetting(Name = "Customs Declarable Property Alias",
-            Description = "Define a property on the order line that dertmines if the shippment contains customs declarable content.",
-            SortOrder = 10200,
-            IsAdvanced = true)]
-        public string CustomsDeclarablePropertyAlias { get; set; }
+        public string ProductCodes { get; set; }
     }
 }
