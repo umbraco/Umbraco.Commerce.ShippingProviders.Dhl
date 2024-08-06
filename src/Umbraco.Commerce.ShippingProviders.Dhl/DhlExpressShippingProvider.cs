@@ -14,8 +14,12 @@ using Umbraco.Commerce.ShippingProviders.Dhl.Api.Models;
 
 namespace Umbraco.Commerce.ShippingProviders.Dhl
 {
-    [ShippingProvider("dhlexpress", "DHL Express", "DHL Express shipping provider")]
-    public class DhlExpressShippingProvider : ShippingProviderBase<DhlExpressSettings>
+    [ShippingProvider("dhlexpress")]
+    public class DhlExpressShippingProvider(
+        UmbracoCommerceContext ctx,
+        IHttpClientFactory httpClientFactory,
+        ILogger<DhlExpressShippingProvider> logger)
+        : ShippingProviderBase<DhlExpressSettings>(ctx)
     {
         private static string[] EuCountryCodes => new[]
         {
@@ -56,19 +60,6 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
             { 'Y', "EXPRESS 12:00" }
         };
 
-        private readonly IHttpClientFactory _httpClientFactory;
-        private readonly ILogger<DhlExpressShippingProvider> _logger;
-
-        public DhlExpressShippingProvider(
-            UmbracoCommerceContext ctx,
-            IHttpClientFactory httpClientFactory,
-            ILogger<DhlExpressShippingProvider> logger)
-            : base(ctx)
-        {
-            _httpClientFactory = httpClientFactory;
-            _logger = logger;
-        }
-
         public override bool SupportsRealtimeRates => true;
 
         public override async Task<ShippingRatesResult> GetShippingRatesAsync(ShippingProviderContext<DhlExpressSettings> context, CancellationToken cancellationToken = default)
@@ -77,11 +68,11 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             if (package == null || !package.HasMeasurements)
             {
-                _logger.Debug("Unable to calculate realtime DHL rates as the package provided is invalid");
+                logger.Debug("Unable to calculate realtime DHL rates as the package provided is invalid");
                 return ShippingRatesResult.Empty;
             }
 
-            var client = DhlExpressClient.Create(_httpClientFactory, context.Settings);
+            var client = DhlExpressClient.Create(httpClientFactory, context.Settings);
 
             // Assume cross customs border by default
             var isCustomsDeclarable = true;
@@ -154,7 +145,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             if (resp.Status != "200")
             {
-                _logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
+                logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
                 return ShippingRatesResult.Empty;
             }
 

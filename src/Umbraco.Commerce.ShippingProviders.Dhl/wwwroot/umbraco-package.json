@@ -1,18 +1,18 @@
 {
-  "id": "Umbraco.Commerce.ShippingProviders.Shipmondo",
-  "name": "Umbraco Commerce Shipping Providers Shipmondo",
+  "id": "Umbraco.Commerce.ShippingProviders.Dhl",
+  "name": "DHL shipping provider for Umbraco Commerce",
   "version": "14.0.0--preview.0.gdcf1320",
   "allowPackageTelemetry": true,
   "extensions": [
     {
       "type": "localization",
-      "alias": "Uc.ShippingProviders.Shipmondo.Localization.En",
+      "alias": "Uc.ShippingProviders.Dhl.Localization.En",
       "weight": -100,
       "name": "English",
       "meta": {
         "culture": "en"
       },
-      "js": "/App_Plugins/UmbracoCommerceShippingProvidersShipmondo/lang/en.js"
+      "js": "/App_Plugins/UmbracoCommerceShippingProvidersDhl/lang/en.js"
     }
   ]
 }
