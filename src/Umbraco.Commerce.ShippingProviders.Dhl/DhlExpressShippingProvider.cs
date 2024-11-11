@@ -125,7 +125,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                 }
             });
 
-            var orderCurrency = Context.Services.CurrencyService.GetCurrency(context.Order.CurrencyId);
+            var orderCurrency = await Context.Services.CurrencyService.GetCurrencyAsync(context.Order.CurrencyId);
             request.MonetaryAmount.Add(new DhlExpressMonetaryAmount
             {
                 Value = context.Order.SubtotalPrice.Value.WithTax,
