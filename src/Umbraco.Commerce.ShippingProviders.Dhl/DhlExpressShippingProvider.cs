@@ -141,7 +141,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                     .Select(x => new DhlExpressProductAndServices { ProductCode = x }));
             }
 
-            var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken).ConfigureAwait(false);
+            var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken);
 
             if (resp.Status != "200")
             {
