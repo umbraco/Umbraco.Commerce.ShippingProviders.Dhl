@@ -125,7 +125,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                 }
             });
 
-            var orderCurrency = Context.Services.CurrencyService.GetCurrency(context.Order.CurrencyId);
+            var orderCurrency = await Context.Services.CurrencyService.GetCurrencyAsync(context.Order.CurrencyId);
             request.MonetaryAmount.Add(new DhlExpressMonetaryAmount
             {
                 Value = context.Order.SubtotalPrice.Value.WithTax,
@@ -141,7 +141,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                     .Select(x => new DhlExpressProductAndServices { ProductCode = x }));
             }
 
-            var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken).ConfigureAwait(false);
+            var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken);
 
             if (resp.Status != "200")
             {
