@@ -1,7 +1,7 @@
 {
   "id": "Umbraco.Commerce.ShippingProviders.Dhl",
   "name": "DHL shipping provider for Umbraco Commerce",
-  "version": "15.0.0--preview.0.g3175ee5",
+  "version": "17.0.0",
   "allowPackageTelemetry": true,
   "extensions": [
     {
