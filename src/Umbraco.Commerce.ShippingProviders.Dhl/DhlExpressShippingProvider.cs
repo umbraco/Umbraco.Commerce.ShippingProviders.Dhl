@@ -6,18 +6,28 @@ using System.Threading;
 using System.Threading.Tasks;
 using Umbraco.Commerce.Common.Logging;
 using Umbraco.Commerce.Core.Api;
-using Umbraco.Commerce.Core.Generators;
 using Umbraco.Commerce.Core.Models;
 using Umbraco.Commerce.Core.ShippingProviders;
+using Umbraco.Commerce.Extensions;
 using Umbraco.Commerce.ShippingProviders.Dhl.Api;
 using Umbraco.Commerce.ShippingProviders.Dhl.Api.Models;
 
 namespace Umbraco.Commerce.ShippingProviders.Dhl
 {
-    [ShippingProvider("dhlexpress", "DHL Express", "DHL Express shipping provider")]
-    public class DhlExpressShippingProvider : ShippingProviderBase<DhlExpressSettings>
+    [ShippingProvider("dhlexpress")]
+    public class DhlExpressShippingProvider(
+        UmbracoCommerceContext ctx,
+        IHttpClientFactory httpClientFactory,
+        ILogger<DhlExpressShippingProvider> logger)
+        : ShippingProviderBase<DhlExpressSettings>(ctx)
     {
-        public static Dictionary<char, string> AvailableServices => new Dictionary<char, string>
+        private static string[] EuCountryCodes => new[]
+        {
+            "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "EL", "HU",
+            "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"
+        };
+
+        private static Dictionary<char, string> AvailableServices => new Dictionary<char, string>
         {
             { '1', "EXPRESS DOMESTIC 12:00" },
             { '4', "JETLINE" },
@@ -50,22 +60,6 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
             { 'Y', "EXPRESS 12:00" }
         };
 
-        private readonly IHttpClientFactory _httpClientFactory;
-        private readonly IOrderHashGenerator _orderHashGenerator;
-        private readonly ILogger<DhlExpressShippingProvider> _logger;
-
-        public DhlExpressShippingProvider(
-            UmbracoCommerceContext ctx,
-            IHttpClientFactory httpClientFactory,
-            IOrderHashGenerator orderHashGenerator,
-            ILogger<DhlExpressShippingProvider> logger)
-            : base(ctx)
-        {
-            _httpClientFactory = httpClientFactory;
-            _orderHashGenerator = orderHashGenerator;
-            _logger = logger;
-        }
-
         public override bool SupportsRealtimeRates => true;
 
         public override async Task<ShippingRatesResult> GetShippingRatesAsync(ShippingProviderContext<DhlExpressSettings> context, CancellationToken cancellationToken = default)
@@ -74,11 +68,25 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             if (package == null || !package.HasMeasurements)
             {
-                _logger.Debug("Unable to calculate realtime DHL rates as the package provided is invalid");
+                logger.Debug("Unable to calculate realtime DHL rates as the package provided is invalid");
                 return ShippingRatesResult.Empty;
             }
 
-            var client = DhlExpressClient.Create(_httpClientFactory, context.Settings);
+            var client = DhlExpressClient.Create(httpClientFactory, context.Settings);
+
+            // Assume cross customs border by default
+            var isCustomsDeclarable = true;
+
+            if (package.SenderAddress.CountryIsoCode == package.ReceiverAddress.CountryIsoCode)
+            {
+                // Domestic
+                isCustomsDeclarable = false;
+            }
+            else if (EuCountryCodes.InvariantContains(package.SenderAddress.CountryIsoCode) && EuCountryCodes.InvariantContains(package.ReceiverAddress.CountryIsoCode))
+            {
+                // Inside the EU
+                isCustomsDeclarable = false;
+            }
 
             var request = new DhlExpressRatesRequest
             {
@@ -96,7 +104,8 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                         PostalCode = package.SenderAddress.ZipCode,
                         CountryCode = package.SenderAddress.CountryIsoCode
                     }
-                }
+                },
+                IsCustomsDeclarable = isCustomsDeclarable
             };
 
             request.Accounts.Add(new DhlExpressAccount
@@ -116,7 +125,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                 }
             });
 
-            var orderCurrency = Context.Services.CurrencyService.GetCurrency(context.Order.CurrencyId);
+            var orderCurrency = await Context.Services.CurrencyService.GetCurrencyAsync(context.Order.CurrencyId);
             request.MonetaryAmount.Add(new DhlExpressMonetaryAmount
             {
                 Value = context.Order.SubtotalPrice.Value.WithTax,
@@ -126,25 +135,17 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
             request.PlannedShippingDateAndTime = DateTime.UtcNow.Date.AddDays(context.Settings.ShippingTimeframe);
             request.NextBusinessDay = context.Settings.NextBusinessDayFallback;
 
-            if (!string.IsNullOrWhiteSpace(context.Settings.ProductTypeCode))
+            if (!string.IsNullOrWhiteSpace(context.Settings.ProductCodes))
             {
-                request.ProductTypeCode = context.Settings.ProductTypeCode;
+                request.ProductsAndServices.AddRange(context.Settings.ProductCodes.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                    .Select(x => new DhlExpressProductAndServices { ProductCode = x }));
             }
 
-            if (!string.IsNullOrWhiteSpace(context.Settings.CustomsDeclarablePropertyAlias))
-            {
-                var propKey = context.Settings.CustomsDeclarablePropertyAlias;
-                var customsDeclarable = context.Order.OrderLines.Any(x =>
-                    x.Properties.ContainsKey(propKey)
-                    && (x.Properties[propKey].Value.Equals("true", StringComparison.InvariantCultureIgnoreCase) || x.Properties[propKey].Value == "1"));
-                request.IsCustomsDeclarable = customsDeclarable;
-            }
-
-            var resp = await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken).ConfigureAwait(false);
+            var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken);
 
             if (resp.Status != "200")
             {
-                _logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
+                logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
                 return ShippingRatesResult.Empty;
             }
 
