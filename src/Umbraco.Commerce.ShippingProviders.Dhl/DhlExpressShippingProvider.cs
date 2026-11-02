@@ -74,20 +74,54 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             var client = DhlExpressClient.Create(httpClientFactory, context.Settings);
 
-            // Assume cross customs border by default
-            var isCustomsDeclarable = true;
+            var orderCurrency = await Context.Services.CurrencyService.GetCurrencyAsync(context.Order.CurrencyId);
 
-            if (package.SenderAddress.CountryIsoCode == package.ReceiverAddress.CountryIsoCode)
+            var request = BuildRatesRequest(
+                package,
+                context.Settings,
+                context.MeasurementSystem,
+                context.Order.SubtotalPrice.Value.WithTax,
+                orderCurrency.Code,
+                DateTime.UtcNow);
+
+            var resp = await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken);
+
+            var result = MapRates(resp, context.Order.CurrencyId, package.Id);
+
+            if (result == ShippingRatesResult.Empty)
+            {
+                logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
+            }
+
+            return result;
+        }
+
+        internal static bool IsCustomsDeclarable(string senderCountryIsoCode, string receiverCountryIsoCode)
+        {
+            if (senderCountryIsoCode == receiverCountryIsoCode)
             {
                 // Domestic
-                isCustomsDeclarable = false;
-            }
-            else if (EuCountryCodes.InvariantContains(package.SenderAddress.CountryIsoCode) && EuCountryCodes.InvariantContains(package.ReceiverAddress.CountryIsoCode))
-            {
-                // Inside the EU
-                isCustomsDeclarable = false;
+                return false;
             }
 
+            if (EuCountryCodes.InvariantContains(senderCountryIsoCode) && EuCountryCodes.InvariantContains(receiverCountryIsoCode))
+            {
+                // Inside the EU
+                return false;
+            }
+
+            // Assume cross customs border by default
+            return true;
+        }
+
+        internal static DhlExpressRatesRequest BuildRatesRequest(
+            Package package,
+            DhlExpressSettings settings,
+            MeasurementSystem measurementSystem,
+            decimal subtotalWithTax,
+            string currencyCode,
+            DateTime utcNow)
+        {
             var request = new DhlExpressRatesRequest
             {
                 CustomerDetails = new DhlExpressCustomerDetails
@@ -105,15 +139,15 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                         CountryCode = package.SenderAddress.CountryIsoCode
                     }
                 },
-                IsCustomsDeclarable = isCustomsDeclarable
+                IsCustomsDeclarable = IsCustomsDeclarable(package.SenderAddress.CountryIsoCode, package.ReceiverAddress.CountryIsoCode)
             };
 
             request.Accounts.Add(new DhlExpressAccount
             {
-                Number = context.Settings.AccountNumber
+                Number = settings.AccountNumber
             });
 
-            request.UnitOfMeasurement = context.MeasurementSystem.ToString().ToLowerInvariant();
+            request.UnitOfMeasurement = measurementSystem.ToString().ToLowerInvariant();
             request.Packages.Add(new DhlExpressPackage
             {
                 Weight = package.Weight,
@@ -125,27 +159,28 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                 }
             });
 
-            var orderCurrency = await Context.Services.CurrencyService.GetCurrencyAsync(context.Order.CurrencyId);
             request.MonetaryAmount.Add(new DhlExpressMonetaryAmount
             {
-                Value = context.Order.SubtotalPrice.Value.WithTax,
-                Currency = orderCurrency.Code
+                Value = subtotalWithTax,
+                Currency = currencyCode
             });
 
-            request.PlannedShippingDateAndTime = DateTime.UtcNow.Date.AddDays(context.Settings.ShippingTimeframe);
-            request.NextBusinessDay = context.Settings.NextBusinessDayFallback;
+            request.PlannedShippingDateAndTime = utcNow.Date.AddDays(settings.ShippingTimeframe);
+            request.NextBusinessDay = settings.NextBusinessDayFallback;
 
-            if (!string.IsNullOrWhiteSpace(context.Settings.ProductCodes))
+            if (!string.IsNullOrWhiteSpace(settings.ProductCodes))
             {
-                request.ProductsAndServices.AddRange(context.Settings.ProductCodes.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                request.ProductsAndServices.AddRange(settings.ProductCodes.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                     .Select(x => new DhlExpressProductAndServices { ProductCode = x }));
             }
 
-            var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken);
+            return request;
+        }
 
+        internal static ShippingRatesResult MapRates(DhlExpressRatesResponse resp, Guid currencyId, Guid packageId)
+        {
             if (resp.Status != "200")
             {
-                logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
                 return ShippingRatesResult.Empty;
             }
 
@@ -156,12 +191,12 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
                     var productPriceBreakdown = p.TotalPriceBreakdown.FirstOrDefault(x => x.CurrencyType == "BILLC");
                     var productPriceTax = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "STTXA")?.Price ?? 0;
                     var productPriceNet = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "SPRQT")?.Price ?? 0;
-                    var productPrice = new Price(productPriceNet, productPriceTax, context.Order.CurrencyId);
+                    var productPrice = new Price(productPriceNet, productPriceTax, currencyId);
                     var productName = AvailableServices.TryGetValue(p.ProductCode[0], out string value) ? value : p.ProductName;
 
                     var option = new ShippingOption(p.ProductCode, productName);
 
-                    return new ShippingRate(productPrice, option, package.Id);
+                    return new ShippingRate(productPrice, option, packageId);
                 }).ToList()
             };
         }
