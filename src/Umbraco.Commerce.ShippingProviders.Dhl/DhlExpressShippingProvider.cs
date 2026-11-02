@@ -86,14 +86,12 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             var resp = await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken);
 
-            var result = MapRates(resp, context.Order.CurrencyId, package.Id);
-
-            if (result == ShippingRatesResult.Empty)
+            if (resp.Status != "200")
             {
                 logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
             }
 
-            return result;
+            return MapRates(resp, context.Order.CurrencyId, package.Id);
         }
 
         internal static bool IsCustomsDeclarable(string senderCountryIsoCode, string receiverCountryIsoCode)
