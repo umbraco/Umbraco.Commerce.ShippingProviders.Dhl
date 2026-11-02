@@ -145,7 +145,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             if (resp.Status != "200" || resp.Products == null)
             {
-                logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
+                logger.Error("Failed to get DHL realtime rates: HTTP {Status} [{Message}] {Detail}", resp.Status, resp.Message, resp.Detail);
                 return ShippingRatesResult.Empty;
             }
 
