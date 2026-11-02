@@ -143,7 +143,7 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken);
 
-            if (resp.Status != "200")
+            if (resp.Status != "200" || resp.Products == null)
             {
                 logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
                 return ShippingRatesResult.Empty;
@@ -151,11 +151,12 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             return new ShippingRatesResult
             {
-                Rates = resp.Products.Select(p =>
+                // A product without a code can't be offered: the code is the shipping option's id
+                Rates = resp.Products.Where(p => p != null && !string.IsNullOrWhiteSpace(p.ProductCode)).Select(p =>
                 {
-                    var productPriceBreakdown = p.TotalPriceBreakdown.FirstOrDefault(x => x.CurrencyType == "BILLC");
-                    var productPriceTax = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "STTXA")?.Price ?? 0;
-                    var productPriceNet = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "SPRQT")?.Price ?? 0;
+                    var productPriceBreakdown = p.TotalPriceBreakdown?.FirstOrDefault(x => x.CurrencyType == "BILLC");
+                    var productPriceTax = productPriceBreakdown?.PriceBreakdown?.FirstOrDefault(x => x.TypeCode == "STTXA")?.Price ?? 0;
+                    var productPriceNet = productPriceBreakdown?.PriceBreakdown?.FirstOrDefault(x => x.TypeCode == "SPRQT")?.Price ?? 0;
                     var productPrice = new Price(productPriceNet, productPriceTax, context.Order.CurrencyId);
                     var productName = AvailableServices.TryGetValue(p.ProductCode[0], out string value) ? value : p.ProductName;
 
