@@ -21,9 +21,11 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
         ILogger<DhlExpressShippingProvider> logger)
         : ShippingProviderBase<DhlExpressSettings>(ctx)
     {
+        // ISO 3166-1 alpha-2 codes of the 27 EU member states. Greece is "GR" here: "EL" is only the EU's own
+        // abbreviation (used in VAT numbers), and store countries use ISO codes.
         private static string[] EuCountryCodes => new[]
         {
-            "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "EL", "HU",
+            "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU",
             "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"
         };
 
@@ -143,19 +145,20 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             var resp =  await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken);
 
-            if (resp.Status != "200")
+            if (resp.Status != "200" || resp.Products == null)
             {
-                logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
+                logger.Error("Failed to get DHL realtime rates: HTTP {Status} [{Message}] {Detail}", resp.Status, resp.Message, resp.Detail);
                 return ShippingRatesResult.Empty;
             }
 
             return new ShippingRatesResult
             {
-                Rates = resp.Products.Select(p =>
+                // A product without a code can't be offered: the code is the shipping option's id
+                Rates = resp.Products.Where(p => p != null && !string.IsNullOrWhiteSpace(p.ProductCode)).Select(p =>
                 {
-                    var productPriceBreakdown = p.TotalPriceBreakdown.FirstOrDefault(x => x.CurrencyType == "BILLC");
-                    var productPriceTax = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "STTXA")?.Price ?? 0;
-                    var productPriceNet = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "SPRQT")?.Price ?? 0;
+                    var productPriceBreakdown = p.TotalPriceBreakdown?.FirstOrDefault(x => x.CurrencyType == "BILLC");
+                    var productPriceTax = productPriceBreakdown?.PriceBreakdown?.FirstOrDefault(x => x.TypeCode == "STTXA")?.Price ?? 0;
+                    var productPriceNet = productPriceBreakdown?.PriceBreakdown?.FirstOrDefault(x => x.TypeCode == "SPRQT")?.Price ?? 0;
                     var productPrice = new Price(productPriceNet, productPriceTax, context.Order.CurrencyId);
                     var productName = AvailableServices.TryGetValue(p.ProductCode[0], out string value) ? value : p.ProductName;
 
