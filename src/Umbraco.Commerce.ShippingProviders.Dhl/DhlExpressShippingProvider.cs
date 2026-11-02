@@ -21,9 +21,11 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
         ILogger<DhlExpressShippingProvider> logger)
         : ShippingProviderBase<DhlExpressSettings>(ctx)
     {
+        // ISO 3166-1 alpha-2 codes of the 27 EU member states. Greece is "GR" here: "EL" is only the EU's own
+        // abbreviation (used in VAT numbers), and store countries use ISO codes.
         private static string[] EuCountryCodes => new[]
         {
-            "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "EL", "HU",
+            "AT", "BE", "BG", "HR", "CY", "CZ", "DK", "EE", "FI", "FR", "DE", "GR", "HU",
             "IE", "IT", "LV", "LT", "LU", "MT", "NL", "PL", "PT", "RO", "SK", "SI", "ES", "SE"
         };
 

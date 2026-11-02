@@ -13,6 +13,9 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl.UnitTests
         [InlineData("US", "US", false)] // domestic outside the EU
         [InlineData("DK", "DE", false)] // both in the EU
         [InlineData("SE", "FR", false)]
+        [InlineData("DK", "GR", false)] // Greece is "GR" in ISO 3166
+        [InlineData("GR", "DE", false)]
+        [InlineData("DK", "EL", true)] // "EL" is not an ISO country code
         [InlineData("DK", "GB", true)] // EU to non-EU
         [InlineData("GB", "DK", true)] // non-EU to EU
         [InlineData("DK", "US", true)]
@@ -24,6 +27,46 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl.UnitTests
 
             // asserts
             result.Should().Be(expected);
+        }
+
+        [Theory]
+        [InlineData("AT")]
+        [InlineData("BE")]
+        [InlineData("BG")]
+        [InlineData("HR")]
+        [InlineData("CY")]
+        [InlineData("CZ")]
+        [InlineData("DK")]
+        [InlineData("EE")]
+        [InlineData("FI")]
+        [InlineData("FR")]
+        [InlineData("DE")]
+        [InlineData("GR")]
+        [InlineData("HU")]
+        [InlineData("IE")]
+        [InlineData("IT")]
+        [InlineData("LV")]
+        [InlineData("LT")]
+        [InlineData("LU")]
+        [InlineData("MT")]
+        [InlineData("NL")]
+        [InlineData("PL")]
+        [InlineData("PT")]
+        [InlineData("RO")]
+        [InlineData("SK")]
+        [InlineData("SI")]
+        [InlineData("ES")]
+        [InlineData("SE")]
+        public void IsCustomsDeclarable_Should_Treat_Every_EU_Member_State_As_Inside_The_EU(string memberState)
+        {
+            // preparation
+            string other = memberState == "DK" ? "SE" : "DK";
+
+            // execution
+            bool result = DhlExpressShippingProvider.IsCustomsDeclarable(other, memberState);
+
+            // asserts
+            result.Should().BeFalse();
         }
 
         [Fact]
