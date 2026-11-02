@@ -177,18 +177,19 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
         internal static ShippingRatesResult MapRates(DhlExpressRatesResponse resp, Guid currencyId, Guid packageId)
         {
-            if (resp.Status != "200")
+            if (resp.Status != "200" || resp.Products == null)
             {
                 return ShippingRatesResult.Empty;
             }
 
             return new ShippingRatesResult
             {
-                Rates = resp.Products.Select(p =>
+                // A product without a code can't be offered: the code is the shipping option's id
+                Rates = resp.Products.Where(p => p != null && !string.IsNullOrWhiteSpace(p.ProductCode)).Select(p =>
                 {
-                    var productPriceBreakdown = p.TotalPriceBreakdown.FirstOrDefault(x => x.CurrencyType == "BILLC");
-                    var productPriceTax = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "STTXA")?.Price ?? 0;
-                    var productPriceNet = productPriceBreakdown?.PriceBreakdown.FirstOrDefault(x => x.TypeCode == "SPRQT")?.Price ?? 0;
+                    var productPriceBreakdown = p.TotalPriceBreakdown?.FirstOrDefault(x => x.CurrencyType == "BILLC");
+                    var productPriceTax = productPriceBreakdown?.PriceBreakdown?.FirstOrDefault(x => x.TypeCode == "STTXA")?.Price ?? 0;
+                    var productPriceNet = productPriceBreakdown?.PriceBreakdown?.FirstOrDefault(x => x.TypeCode == "SPRQT")?.Price ?? 0;
                     var productPrice = new Price(productPriceNet, productPriceTax, currencyId);
                     var productName = AvailableServices.TryGetValue(p.ProductCode[0], out string value) ? value : p.ProductName;
 

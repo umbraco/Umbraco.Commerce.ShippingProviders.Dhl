@@ -181,6 +181,66 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl.UnitTests
         }
 
         [Fact]
+        public void MapRates_Should_Return_Empty_When_The_Response_Has_No_Products_List()
+        {
+            // preparation
+            DhlExpressRatesResponse resp = new() { Products = null! };
+
+            // execution
+            ShippingRatesResult result = DhlExpressShippingProvider.MapRates(resp, CurrencyId, PackageId);
+
+            // asserts
+            result.Should().Be(ShippingRatesResult.Empty);
+        }
+
+        [Theory]
+        [InlineData(null)]
+        [InlineData("")]
+        [InlineData("  ")]
+        public void MapRates_Should_Skip_Products_Without_A_Product_Code(string? productCode)
+        {
+            // preparation
+            DhlExpressRatesResponse resp = CreateResponse(
+                CreateProduct(productCode!, "No Code", ("BILLC", [("SPRQT", 10m)])),
+                CreateProduct("P", "EXPRESS WORLDWIDE", ("BILLC", [("SPRQT", 20m)])));
+
+            // execution
+            ShippingRate rate = MapSingle(resp);
+
+            // asserts
+            rate.Option.Id.Should().Be("P");
+        }
+
+        [Fact]
+        public void MapRates_Should_Use_Zero_When_The_Breakdown_Lists_Are_Null()
+        {
+            // preparation
+            DhlExpressProduct noBreakdowns = CreateProduct("P", "EXPRESS WORLDWIDE");
+            noBreakdowns.TotalPriceBreakdown = null!;
+            DhlExpressProduct noItems = CreateProduct("H", "ECONOMY SELECT");
+            noItems.TotalPriceBreakdown.Add(new DhlExpressTotalPriceWithBreakdown { CurrencyType = "BILLC", PriceBreakdown = null! });
+
+            // execution
+            ShippingRatesResult result = DhlExpressShippingProvider.MapRates(CreateResponse(noBreakdowns, noItems), CurrencyId, PackageId);
+
+            // asserts
+            result.Rates.Select(x => x.Value.WithTax).Should().Equal(0m, 0m);
+        }
+
+        [Fact]
+        public void MapRates_Should_Return_Empty_For_A_Deserialized_Success_Body_Without_Products()
+        {
+            // preparation
+            DhlExpressRatesResponse resp = DhlExpressRatesSerializationTests.Deserialize("""{ "products": null }""");
+
+            // execution
+            ShippingRatesResult result = DhlExpressShippingProvider.MapRates(resp, CurrencyId, PackageId);
+
+            // asserts
+            result.Should().Be(ShippingRatesResult.Empty);
+        }
+
+        [Fact]
         public void MapRates_Should_Map_A_Deserialized_DHL_Response()
         {
             // preparation
