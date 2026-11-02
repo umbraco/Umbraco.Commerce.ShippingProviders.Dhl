@@ -86,9 +86,9 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl
 
             var resp = await client.GetRatesAsync(request, context.Order.Id.ToString(), cancellationToken);
 
-            if (resp.Status != "200")
+            if (resp.Status != "200" || resp.Products == null)
             {
-                logger.Error($"Failed to get DHL realtime rates: [{resp.Message}] {resp.Detail}");
+                logger.Error("Failed to get DHL realtime rates: HTTP {Status} [{Message}] {Detail}", resp.Status, resp.Message, resp.Detail);
             }
 
             return MapRates(resp, context.Order.CurrencyId, package.Id);

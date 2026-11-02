@@ -171,6 +171,103 @@ namespace Umbraco.Commerce.ShippingProviders.Dhl.UnitTests
         }
 
         [Theory]
+        [InlineData(HttpStatusCode.BadGateway, "<html><body>502 Bad Gateway</body></html>")]
+        [InlineData(HttpStatusCode.Unauthorized, "Unauthorized")]
+        [InlineData(HttpStatusCode.ServiceUnavailable, "")]
+        public async Task GetRatesAsync_Should_Not_Throw_When_An_Error_Response_Is_Not_Json(HttpStatusCode statusCode, string body)
+        {
+            // preparation
+            StubHandler handler = new() { StatusCode = statusCode, ResponseJson = body };
+            DhlExpressClient client = DhlExpressClient.Create(new StubHttpClientFactory(handler), TestSettings());
+
+            // execution
+            DhlExpressRatesResponse resp = await client.GetRatesAsync(new DhlExpressRatesRequest());
+
+            // asserts
+            resp.Status.Should().Be(((int)statusCode).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            resp.Detail.Should().Be(body);
+        }
+
+        [Fact]
+        public async Task GetRatesAsync_Should_Use_The_Http_Status_When_The_Error_Body_Has_None()
+        {
+            // preparation
+            StubHandler handler = new() { StatusCode = HttpStatusCode.BadRequest, ResponseJson = """{ "title": "Bad Request", "detail": "Missing account" }""" };
+            DhlExpressClient client = DhlExpressClient.Create(new StubHttpClientFactory(handler), TestSettings());
+
+            // execution
+            DhlExpressRatesResponse resp = await client.GetRatesAsync(new DhlExpressRatesRequest());
+
+            // asserts
+            resp.Status.Should().Be("400");
+            resp.Detail.Should().Be("Missing account");
+        }
+
+        [Fact]
+        public async Task GetRatesAsync_Should_Keep_The_Raw_Body_When_An_Error_Body_Does_Not_Match_The_Model()
+        {
+            // preparation
+            const string body = """{ "status": 400, "detail": "Numeric status" }""";
+            StubHandler handler = new() { StatusCode = HttpStatusCode.BadRequest, ResponseJson = body };
+            DhlExpressClient client = DhlExpressClient.Create(new StubHttpClientFactory(handler), TestSettings());
+
+            // execution
+            DhlExpressRatesResponse resp = await client.GetRatesAsync(new DhlExpressRatesRequest());
+
+            // asserts
+            resp.Status.Should().Be("400");
+            resp.Detail.Should().Be(body);
+        }
+
+        [Fact]
+        public async Task GetRatesAsync_Should_Keep_The_Raw_Body_When_A_Json_Error_Body_Is_Not_A_DHL_Error()
+        {
+            // preparation
+            const string body = """{ "error": "Rate limit exceeded" }""";
+            StubHandler handler = new() { StatusCode = HttpStatusCode.TooManyRequests, ResponseJson = body };
+            DhlExpressClient client = DhlExpressClient.Create(new StubHttpClientFactory(handler), TestSettings());
+
+            // execution
+            DhlExpressRatesResponse resp = await client.GetRatesAsync(new DhlExpressRatesRequest());
+
+            // asserts
+            resp.Status.Should().Be("429");
+            resp.Detail.Should().Be(body);
+        }
+
+        [Fact]
+        public async Task GetRatesAsync_Should_Truncate_A_Long_Error_Body()
+        {
+            // preparation
+            StubHandler handler = new() { StatusCode = HttpStatusCode.InternalServerError, ResponseJson = new string('x', 5000) };
+            DhlExpressClient client = DhlExpressClient.Create(new StubHttpClientFactory(handler), TestSettings());
+
+            // execution
+            DhlExpressRatesResponse resp = await client.GetRatesAsync(new DhlExpressRatesRequest());
+
+            // asserts
+            resp.Detail.Should().Be(new string('x', 1000) + "...");
+        }
+
+        [Theory]
+        [InlineData("not json")]
+        [InlineData("")]
+        [InlineData("{}")]
+        public async Task GetRatesAsync_Should_Return_No_Products_When_A_Success_Body_Is_Unusable(string body)
+        {
+            // preparation
+            StubHandler handler = new() { ResponseJson = body };
+            DhlExpressClient client = DhlExpressClient.Create(new StubHttpClientFactory(handler), TestSettings());
+
+            // execution
+            DhlExpressRatesResponse resp = await client.GetRatesAsync(new DhlExpressRatesRequest());
+
+            // asserts
+            resp.Products.Should().BeNull();
+            DhlExpressShippingProvider.MapRates(resp, Guid.NewGuid(), Guid.NewGuid()).Should().Be(Umbraco.Commerce.Core.ShippingProviders.ShippingRatesResult.Empty);
+        }
+
+        [Theory]
         [InlineData(null)]
         [InlineData("")]
         [InlineData("  ")]
